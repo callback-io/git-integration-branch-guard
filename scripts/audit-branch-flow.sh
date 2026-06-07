@@ -67,9 +67,9 @@ log_matches_fixed() {
   local merge_only="$3"
 
   if [ "$merge_only" = "yes" ]; then
-    git log --merges --oneline "$range" | grep -Fiw -- "$pattern" || true
+    git log --no-decorate --no-show-signature --merges --oneline "$range" | grep -Fiw -- "$pattern" || true
   else
-    git log --oneline "$range" | grep -Fiw -- "$pattern" || true
+    git log --no-decorate --no-show-signature --oneline "$range" | grep -Fiw -- "$pattern" || true
   fi
 }
 
@@ -194,17 +194,17 @@ if [ "${#resolved_refs[@]}" -gt 0 ]; then
   while IFS= read -r merge_commit; do
     [ -n "$merge_commit" ] || continue
 
-    parents="$(git show -s --format=%P "$merge_commit")"
+    parents="$(git rev-list --parents -n 1 "$merge_commit")"
     # shellcheck disable=SC2086
     set -- $parents
-    [ "$#" -gt 1 ] || continue
-    shift
+    [ "$#" -gt 2 ] || continue
+    shift 2
 
     for parent in "$@"; do
       for integration_ref in "${resolved_refs[@]}"; do
         if git merge-base --is-ancestor "$parent" "$integration_ref" &&
           ! git merge-base --is-ancestor "$parent" "$production"; then
-          echo "  $(git log -1 --oneline "$merge_commit")"
+          echo "  $(git log -1 --no-decorate --no-show-signature --oneline "$merge_commit")"
           echo "    parent $(git rev-parse --short "$parent") is reachable from $integration_ref"
           found=1
           graph_found=1
@@ -224,7 +224,7 @@ echo
 report_mention_section "Commit subjects that mention shared validation branches:" no
 
 echo "Commits in release range:"
-git log --no-merges --format='  %h %an %s' "$range" || true
+git log --no-show-signature --no-merges --format='  %h %an %s' "$range" || true
 echo
 
 if [ "$found" -ne 0 ]; then

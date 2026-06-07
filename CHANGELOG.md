@@ -13,6 +13,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Fixed
 
 - Print a notice when a shared validation branch ref cannot be resolved locally instead of silently skipping the merge-graph check, and resolve each ref once per run.
+- Keep `git log` parsing stable when user configuration enables ref decorations or signature display, and read merge parents through plumbing instead of `git show`.
 
 ## [0.1.0] - 2026-06-07
 
