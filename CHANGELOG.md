@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-07
+
 ### Added
 
 - Add a Bash test suite for the branch-flow audit script.
@@ -19,3 +21,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Treat integration branch names as literal text when matching commit subjects.
 - Detect merge commits whose non-first parent is reachable from a configured shared validation branch, even when the merge message does not name that branch.
 - Return usage status `2` when an option value is missing.
+
+[unreleased]: https://github.com/callback-io/git-integration-branch-guard/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/callback-io/git-integration-branch-guard/releases/tag/v0.1.0
