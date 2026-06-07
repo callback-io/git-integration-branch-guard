@@ -173,7 +173,7 @@ If the script is installed outside the repository, call it by absolute path. The
 
 The script checks for:
 
-- merge commits or commit subjects that mention shared validation branch names, matched as literal text
+- merge commits or commit subjects that mention shared validation branch names, matched as whole words of literal text
 - merge commits whose non-first parent is reachable from a configured shared validation branch, when that branch ref exists locally
 - all non-merge commits in the release range for manual review
 

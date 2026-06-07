@@ -136,7 +136,7 @@ scripts/audit-branch-flow.sh --production origin/main --integration origin/dev -
 
 脚本会检查三类信号：
 
-- merge commit 或 commit subject 是否按字面量提到共享验证分支名
+- merge commit 或 commit subject 是否按字面量整词提到共享验证分支名（`dev` 不会再误匹配 `developer` 这类词）
 - 当共享验证分支 ref 在本地存在时，merge commit 的非第一父提交是否可从该共享验证分支到达
 - 发布范围内的所有非 merge commit，供人工复核
 

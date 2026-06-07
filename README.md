@@ -136,7 +136,7 @@ Pass `--integration` more than once when the repository has multiple shared vali
 
 The script checks three signals:
 
-- merge commits or commit subjects that mention shared validation branch names, matched as literal text
+- merge commits or commit subjects that mention shared validation branch names, matched as whole words of literal text
 - merge commits whose non-first parent is reachable from a configured shared validation branch, when that branch ref exists locally
 - the full non-merge commit list in the release range for manual review
 

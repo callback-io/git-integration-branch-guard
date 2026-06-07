@@ -67,9 +67,9 @@ log_matches_fixed() {
   local merge_only="$3"
 
   if [ "$merge_only" = "yes" ]; then
-    git log --merges --oneline "$range" | grep -Fi -- "$pattern" || true
+    git log --merges --oneline "$range" | grep -Fiw -- "$pattern" || true
   else
-    git log --oneline "$range" | grep -Fi -- "$pattern" || true
+    git log --oneline "$range" | grep -Fiw -- "$pattern" || true
   fi
 }
 

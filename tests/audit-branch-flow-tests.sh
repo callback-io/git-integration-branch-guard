@@ -177,6 +177,35 @@ test_integration_name_is_matched_as_literal_text() {
   pass "$name"
 }
 
+scenario_substring_subject() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c feature/wording >/dev/null 2>&1
+  printf 'note\n' > note.txt
+  git add note.txt
+  git commit -m 'docs: update developer guide' >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_substring_inside_word_is_not_flagged() {
+  local name="branch name inside a longer word exits 0"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_substring_subject "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "Result: no obvious shared-validation branch contamination found." || return
+  pass "$name"
+}
+
 scenario_custom_merge_message() {
   local output_file="$1"
   local main_ref
@@ -229,6 +258,7 @@ run_test test_clean_branch_passes
 run_test test_default_merge_message_is_detected
 run_test test_missing_option_value_exits_2
 run_test test_integration_name_is_matched_as_literal_text
+run_test test_substring_inside_word_is_not_flagged
 run_test test_custom_merge_message_is_detected_by_graph
 
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"

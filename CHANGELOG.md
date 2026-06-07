@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- Match shared validation branch names as whole words, so a name like `dev` no longer matches words like `developer`.
+
 ## [0.1.0] - 2026-06-07
 
 ### Added
