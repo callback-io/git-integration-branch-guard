@@ -4,6 +4,8 @@
 
 Git Integration Branch Guard is a portable Agent Skill for repositories that use shared development, testing, UAT, staging, or integration branches.
 
+I built this after getting burned repeatedly: my AI coding agent kept merging `dev` into my feature branches to "bring them up to date", and kept creating new work branches from `dev` when they should have started from `main`. Each time, other people's unfinished work quietly followed my branch toward release.
+
 It teaches an agent one critical rule:
 
 > Shared validation branches are collection or promotion pools, not upstreams for scoped work.

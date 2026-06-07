@@ -15,6 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- Open both READMEs with the real incident that motivated the skill.
 - Treat integration branch names as literal text when matching commit subjects.
 - Detect merge commits whose non-first parent is reachable from a configured shared validation branch, even when the merge message does not name that branch.
 - Return usage status `2` when an option value is missing.
