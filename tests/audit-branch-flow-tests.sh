@@ -206,6 +206,36 @@ test_substring_inside_word_is_not_flagged() {
   pass "$name"
 }
 
+scenario_missing_integration_ref() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c feature/no-ref >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration nosuchbranch >"$output_file.status"
+}
+
+test_missing_integration_ref_is_reported() {
+  local name="missing integration ref prints a skip notice"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_missing_integration_ref "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "note: no local ref found for nosuchbranch" || return
+  assert_contains "$name" "$output" "skipped: none of the shared validation branch refs were found locally" || return
+  pass "$name"
+}
+
 scenario_custom_merge_message() {
   local output_file="$1"
   local main_ref
@@ -259,6 +289,7 @@ run_test test_default_merge_message_is_detected
 run_test test_missing_option_value_exits_2
 run_test test_integration_name_is_matched_as_literal_text
 run_test test_substring_inside_word_is_not_flagged
+run_test test_missing_integration_ref_is_reported
 run_test test_custom_merge_message_is_detected_by_graph
 
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"

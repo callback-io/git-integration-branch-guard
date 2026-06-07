@@ -182,33 +182,41 @@ report_mention_section "Merge commits that mention shared validation branches:" 
 
 echo "Merge commits whose non-first parent is reachable from shared validation branches:"
 graph_found=0
-while IFS= read -r merge_commit; do
-  [ -n "$merge_commit" ] || continue
+resolved_refs=()
+for integration in "${integrations[@]}"; do
+  if integration_ref="$(resolve_integration_ref "$integration")"; then
+    resolved_refs+=("$integration_ref")
+  else
+    echo "  note: no local ref found for $integration; merge-graph check skipped for it"
+  fi
+done
+if [ "${#resolved_refs[@]}" -gt 0 ]; then
+  while IFS= read -r merge_commit; do
+    [ -n "$merge_commit" ] || continue
 
-  parents="$(git show -s --format=%P "$merge_commit")"
-  # shellcheck disable=SC2086
-  set -- $parents
-  [ "$#" -gt 1 ] || continue
-  shift
+    parents="$(git show -s --format=%P "$merge_commit")"
+    # shellcheck disable=SC2086
+    set -- $parents
+    [ "$#" -gt 1 ] || continue
+    shift
 
-  for parent in "$@"; do
-    for integration in "${integrations[@]}"; do
-      if ! integration_ref="$(resolve_integration_ref "$integration")"; then
-        continue
-      fi
-
-      if git merge-base --is-ancestor "$parent" "$integration_ref" &&
-        ! git merge-base --is-ancestor "$parent" "$production"; then
-        echo "  $(git log -1 --oneline "$merge_commit")"
-        echo "    parent $(git rev-parse --short "$parent") is reachable from $integration_ref"
-        found=1
-        graph_found=1
-        break 2
-      fi
+    for parent in "$@"; do
+      for integration_ref in "${resolved_refs[@]}"; do
+        if git merge-base --is-ancestor "$parent" "$integration_ref" &&
+          ! git merge-base --is-ancestor "$parent" "$production"; then
+          echo "  $(git log -1 --oneline "$merge_commit")"
+          echo "    parent $(git rev-parse --short "$parent") is reachable from $integration_ref"
+          found=1
+          graph_found=1
+          break 2
+        fi
+      done
     done
-  done
-done < <(git rev-list --merges "$range")
-if [ "$graph_found" -eq 0 ]; then
+  done < <(git rev-list --merges "$range")
+fi
+if [ "${#resolved_refs[@]}" -eq 0 ]; then
+  echo "  skipped: none of the shared validation branch refs were found locally"
+elif [ "$graph_found" -eq 0 ]; then
   echo "  none found"
 fi
 echo

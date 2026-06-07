@@ -10,6 +10,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - Match shared validation branch names as whole words, so a name like `dev` no longer matches words like `developer`.
 
+### Fixed
+
+- Print a notice when a shared validation branch ref cannot be resolved locally instead of silently skipping the merge-graph check, and resolve each ref once per run.
+
 ## [0.1.0] - 2026-06-07
 
 ### Added
