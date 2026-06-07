@@ -190,7 +190,9 @@ for integration in "${integrations[@]}"; do
     echo "  note: no local ref found for $integration; merge-graph check skipped for it"
   fi
 done
-if [ "${#resolved_refs[@]}" -gt 0 ]; then
+if [ "${#resolved_refs[@]}" -eq 0 ]; then
+  echo "  skipped: none of the shared validation branch refs were found locally"
+else
   while IFS= read -r merge_commit; do
     [ -n "$merge_commit" ] || continue
 
@@ -213,11 +215,9 @@ if [ "${#resolved_refs[@]}" -gt 0 ]; then
       done
     done
   done < <(git rev-list --merges "$range")
-fi
-if [ "${#resolved_refs[@]}" -eq 0 ]; then
-  echo "  skipped: none of the shared validation branch refs were found locally"
-elif [ "$graph_found" -eq 0 ]; then
-  echo "  none found"
+  if [ "$graph_found" -eq 0 ]; then
+    echo "  none found"
+  fi
 fi
 echo
 
