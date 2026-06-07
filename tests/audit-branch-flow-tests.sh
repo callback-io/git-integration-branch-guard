@@ -1,0 +1,238 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT="$ROOT_DIR/scripts/audit-branch-flow.sh"
+
+pass_count=0
+fail_count=0
+
+pass() {
+  printf 'PASS %s\n' "$1"
+  pass_count=$((pass_count + 1))
+}
+
+fail() {
+  printf 'FAIL %s\n%s\n' "$1" "$2" >&2
+  fail_count=$((fail_count + 1))
+}
+
+assert_status() {
+  local name="$1"
+  local actual="$2"
+  local expected="$3"
+
+  if [ "$actual" -ne "$expected" ]; then
+    fail "$name" "expected exit status $expected, got $actual"
+    return 1
+  fi
+}
+
+assert_contains() {
+  local name="$1"
+  local haystack="$2"
+  local needle="$3"
+
+  if ! grep -Fq "$needle" <<<"$haystack"; then
+    fail "$name" "expected output to contain: $needle"
+    return 1
+  fi
+}
+
+with_git_repo() {
+  local repo
+  repo="$(mktemp -d)"
+
+  (
+    cd "$repo"
+    git init -b main >/dev/null
+    git config user.email test@example.com
+    git config user.name Tester
+    printf 'base\n' > app.txt
+    git add app.txt
+    git commit -m 'base' >/dev/null
+    "$@"
+  )
+  local status=$?
+
+  rm -rf "$repo"
+  return "$status"
+}
+
+run_script() {
+  local output_file="$1"
+  shift
+
+  set +e
+  "$SCRIPT" "$@" >"$output_file" 2>&1
+  local status=$?
+  set -e
+  printf '%s' "$status"
+}
+
+scenario_clean_branch() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c feature/clean >/dev/null 2>&1
+  printf 'clean\n' >> app.txt
+  git commit -am 'feat: clean work' >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_clean_branch_passes() {
+  local name="clean branch exits 0"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_clean_branch "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "Result: no obvious shared-validation branch contamination found." || return
+  pass "$name"
+}
+
+scenario_default_merge_message() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c dev >/dev/null 2>&1
+  printf 'dev\n' > dev.txt
+  git add dev.txt
+  git commit -m 'feat: shared dev change' >/dev/null
+  git switch -c feature/contaminated main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git merge --no-ff dev -m "Merge branch 'dev' into feature/contaminated" >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_default_merge_message_is_detected() {
+  local name="default integration merge exits 1"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_default_merge_message "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 1 || return
+  assert_contains "$name" "$output" "Result: possible shared-validation branch contamination detected." || return
+  pass "$name"
+}
+
+test_missing_option_value_exits_2() {
+  local name="missing option value exits 2 with usage"
+  local output_file
+  local status output
+
+  output_file="$(mktemp)"
+  status="$(run_script "$output_file" --production)"
+  output="$(cat "$output_file")"
+  rm -f "$output_file"
+
+  assert_status "$name" "$status" 2 || return
+  assert_contains "$name" "$output" "Missing value for --production." || return
+  assert_contains "$name" "$output" "Usage:" || return
+  pass "$name"
+}
+
+scenario_literal_integration_name() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c feature/literal >/dev/null 2>&1
+  printf 'note\n' > note.txt
+  git add note.txt
+  git commit -m 'docs: mention devXv1 in text' >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration "dev.v1" >"$output_file.status"
+}
+
+test_integration_name_is_matched_as_literal_text() {
+  local name="integration branch names are literal grep patterns"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_literal_integration_name "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "Result: no obvious shared-validation branch contamination found." || return
+  pass "$name"
+}
+
+scenario_custom_merge_message() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c dev >/dev/null 2>&1
+  printf 'shared\n' > shared.txt
+  git add shared.txt
+  git commit -m 'feat: shared validation change' >/dev/null
+  git switch -c feature/custom-message main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git merge --no-ff dev -m 'merge validation pool' >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_custom_merge_message_is_detected_by_graph() {
+  local name="custom integration merge message exits 1"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_custom_merge_message "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 1 || return
+  assert_contains "$name" "$output" "Merge commits whose non-first parent is reachable from shared validation branches:" || return
+  assert_contains "$name" "$output" "Result: possible shared-validation branch contamination detected." || return
+  pass "$name"
+}
+
+run_test() {
+  local test_name="$1"
+
+  set +e
+  "$test_name"
+  local status=$?
+  set -e
+
+  if [ "$status" -ne 0 ]; then
+    return 0
+  fi
+}
+
+run_test test_clean_branch_passes
+run_test test_default_merge_message_is_detected
+run_test test_missing_option_value_exits_2
+run_test test_integration_name_is_matched_as_literal_text
+run_test test_custom_merge_message_is_detected_by_graph
+
+printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
+
+if [ "$fail_count" -ne 0 ]; then
+  exit 1
+fi

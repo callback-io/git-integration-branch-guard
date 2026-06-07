@@ -1,0 +1,20 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses semantic versioning for published releases.
+
+## [Unreleased]
+
+### Added
+
+- Add a Bash test suite for the branch-flow audit script.
+- Add GitHub Actions CI: ShellCheck on Linux, syntax checks and tests on Linux, macOS, and Windows.
+- Keep shell scripts LF-only via `.gitattributes` so they run under Git Bash on Windows.
+- Add open-source project metadata and contribution guidance.
+
+### Changed
+
+- Treat integration branch names as literal text when matching commit subjects.
+- Detect merge commits whose non-first parent is reachable from a configured shared validation branch, even when the merge message does not name that branch.
+- Return usage status `2` when an option value is missing.
