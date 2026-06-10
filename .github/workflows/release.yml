@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag to publish a release for (e.g. v0.2.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve tag and version
+        id: meta
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
+        run: |
+          if [ -n "$DISPATCH_TAG" ]; then
+            tag="$DISPATCH_TAG"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          case "$tag" in
+            v*) ;;
+            *) echo "::error::Refusing to release non-version tag '$tag'"; exit 1 ;;
+          esac
+          {
+            echo "tag=$tag"
+            echo "version=${tag#v}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Build release notes from CHANGELOG
+        id: notes
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          notes="$(mktemp)"
+          awk -v ver="$VERSION" '
+            index($0, "## [" ver "]") == 1 { capture = 1; next }
+            capture && index($0, "## [") == 1 { exit }
+            capture { print }
+          ' CHANGELOG.md | sed '/./,$!d' > "$notes"
+          if [ ! -s "$notes" ]; then
+            printf "Release %s\n" "$VERSION" > "$notes"
+          fi
+          echo "path=$notes" >> "$GITHUB_OUTPUT"
+          echo '----- release notes -----'
+          cat "$notes"
+
+      - name: Create or update the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          NOTES: ${{ steps.notes.outputs.path }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$NOTES"
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$NOTES"
+          fi
