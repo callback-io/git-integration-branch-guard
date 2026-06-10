@@ -279,7 +279,7 @@ bash tests/install-tests.sh
 shellcheck skills/git-integration-branch-guard/scripts/audit-branch-flow.sh scripts/guard-git-command.sh install.sh tests/*.sh
 ```
 
-GitHub Actions runs the same checks on pushes and pull requests: ShellCheck on Linux, and the syntax check and test suite on Linux, macOS, and Windows (Git Bash), so the Bash 3.2 baseline and Windows compatibility stay verified.
+GitHub Actions runs the same checks on pushes and pull requests: ShellCheck on Linux, and the syntax check and test suite on Linux, macOS, and Windows (Git Bash), so the Bash 3.2 baseline and Windows compatibility stay verified. CI also validates every JSON and YAML manifest and self-tests the GitHub Action by building clean and contaminated scenario branches and asserting the audit passes one, fails the other, and refuses shallow checkouts.
 
 ## Example Requests This Skill Should Catch
 

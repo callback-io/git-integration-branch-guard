@@ -279,7 +279,7 @@ bash tests/install-tests.sh
 shellcheck skills/git-integration-branch-guard/scripts/audit-branch-flow.sh scripts/guard-git-command.sh install.sh tests/*.sh
 ```
 
-GitHub Actions 会在 push 和 pull request 时运行同样的检查：ShellCheck 在 Linux 上运行，语法检查和测试在 Linux、macOS 和 Windows（Git Bash）上分别运行，持续保证 Bash 3.2 基线和 Windows 兼容性。
+GitHub Actions 会在 push 和 pull request 时运行同样的检查：ShellCheck 在 Linux 上运行，语法检查和测试在 Linux、macOS 和 Windows（Git Bash）上分别运行，持续保证 Bash 3.2 基线和 Windows 兼容性。CI 还会校验所有 JSON / YAML 清单，并对 GitHub Action 做自测：现场构造干净分支和污染分支，断言审计放行前者、拦下后者、并拒绝浅克隆。
 
 ## 这个 Skill 应该拦住的请求
 

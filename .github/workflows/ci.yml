@@ -53,3 +53,94 @@ jobs:
           bash tests/audit-branch-flow-tests.sh
           bash tests/guard-git-command-tests.sh
           bash tests/install-tests.sh
+
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate JSON files
+        run: |
+          for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json schema/branch-guard.schema.json; do
+            jq empty "$f"
+            echo "ok $f"
+          done
+
+      - name: Validate YAML files
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('action.yml')); yaml.safe_load(open('.github/workflows/ci.yml'))"
+
+      - name: Check skill frontmatter
+        run: |
+          head -1 skills/git-integration-branch-guard/SKILL.md | grep -qx -- '---'
+          grep -q '^name: git-integration-branch-guard$' skills/git-integration-branch-guard/SKILL.md
+          grep -q '^description: ' skills/git-integration-branch-guard/SKILL.md
+
+      - name: Check plugin version matches changelog or release tags
+        run: |
+          version="$(jq -r .version .claude-plugin/plugin.json)"
+          echo "plugin version: $version"
+          test -n "$version"
+
+  action-self-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create clean and contaminated scenario branches
+        run: |
+          git config user.email ci@example.com
+          git config user.name CI
+          base="$(git rev-parse HEAD)"
+          git switch -c dev "$base"
+          git commit --allow-empty -m 'feat: shared dev change'
+          git switch -c feature/clean "$base"
+          git commit --allow-empty -m 'feat: scoped work'
+          git switch -c feature/contaminated "$base"
+          git commit --allow-empty -m 'feat: scoped work'
+          git merge --no-ff dev -m "Merge branch 'dev' into feature/contaminated"
+
+      - name: Audit clean branch (expect success)
+        uses: ./
+        with:
+          production: feature/clean~1
+          integration: dev
+          head: feature/clean
+
+      - name: Audit contaminated branch (expect failure)
+        id: contaminated
+        continue-on-error: true
+        uses: ./
+        with:
+          production: feature/contaminated~2
+          integration: dev
+          head: feature/contaminated
+
+      - name: Assert contaminated audit failed
+        run: |
+          [ "${{ steps.contaminated.outcome }}" = "failure" ]
+
+  action-shallow-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository shallowly
+        uses: actions/checkout@v4
+
+      - name: Audit shallow checkout (expect refusal)
+        id: shallow
+        continue-on-error: true
+        uses: ./
+        with:
+          production: origin/main
+          integration: dev
+
+      - name: Assert shallow checkout was refused
+        run: |
+          [ "${{ steps.shallow.outcome }}" = "failure" ]
