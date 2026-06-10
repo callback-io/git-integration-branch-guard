@@ -1,0 +1,13 @@
+{
+  "name": "git-integration-branch-guard",
+  "version": "0.2.0",
+  "description": "Keeps shared validation branches (dev/test/uat/staging) out of work and production branches: a skill that teaches the one-way integration workflow, a PreToolUse hook that blocks forbidden git flows, and a release audit script.",
+  "author": {
+    "name": "callback",
+    "url": "https://github.com/callback-io"
+  },
+  "homepage": "https://github.com/callback-io/git-integration-branch-guard",
+  "repository": "https://github.com/callback-io/git-integration-branch-guard",
+  "license": "MIT",
+  "keywords": ["git", "workflow", "branch-protection", "guardrails"]
+}

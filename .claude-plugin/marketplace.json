@@ -1,0 +1,14 @@
+{
+  "name": "git-integration-branch-guard",
+  "owner": {
+    "name": "callback",
+    "url": "https://github.com/callback-io"
+  },
+  "plugins": [
+    {
+      "name": "git-integration-branch-guard",
+      "source": "./",
+      "description": "Keeps shared validation branches (dev/test/uat/staging) out of work and production branches: a skill that teaches the one-way integration workflow, a PreToolUse hook that blocks forbidden git flows, and a release audit script."
+    }
+  ]
+}

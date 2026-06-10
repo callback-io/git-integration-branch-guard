@@ -25,6 +25,26 @@ Do not rely on prefixes alone. A work branch is any scoped branch that is intend
 
 Do not rely on branch names alone. In one repository `dev` may be a shared integration branch; in another it may be a scoped developer branch, an environment branch, or part of a promotion chain. Treat the branch by its role, not by its spelling.
 
+## Repository Configuration
+
+Before inferring branch roles from names, check for `.branch-guard.json` at the repository root. When it exists, it is the authoritative role declaration for that repository:
+
+```json
+{
+  "production": ["main"],
+  "integration": ["dev", "staging"],
+  "workPatterns": ["feat/*", "fix/*"],
+  "promotionPaths": ["dev->staging"],
+  "enforcement": "deny"
+}
+```
+
+- `production` and `integration` list branch names or glob patterns for each role; anything else is a work branch.
+- `promotionPaths` lists the only allowed shared-environment promotions, written as `source->target`.
+- `enforcement` controls how the companion command hook reacts to forbidden flows (`deny`, `ask`, or `warn`).
+
+The audit script reads the same file, so `scripts/audit-branch-flow.sh` can run without arguments in a configured repository. If the repository has no `.branch-guard.json`, fall back to mapping roles from names and ask the user when a role is ambiguous.
+
 ## Direction Rules
 
 Allowed directions:

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIPT="$ROOT_DIR/scripts/audit-branch-flow.sh"
+SCRIPT="$ROOT_DIR/skills/git-integration-branch-guard/scripts/audit-branch-flow.sh"
 
 pass_count=0
 fail_count=0
