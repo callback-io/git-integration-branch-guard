@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/callback-io/git-integration-branch-guard/main/schema/branch-guard.schema.json",
+  "title": "Branch Guard configuration",
+  "description": "Declares branch roles for one repository so the guard skill, the command hook, and the audit script all read the same one-way integration policy. Keep the file flat: string arrays and string scalars only, and avoid double quotes or backslashes inside branch names so shell-only consumers can parse it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "production": {
+      "description": "Branch names or glob patterns that act as production/release sources.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": ["main", "master"]
+    },
+    "integration": {
+      "description": "Shared validation branch names or glob patterns. These are one-way collection pools and must never flow back into work or production branches.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": ["dev", "develop", "test", "qa", "uat", "stage", "staging", "preprod", "integration"]
+    },
+    "workPatterns": {
+      "description": "Glob patterns for scoped work branches. Branches that match neither production nor integration are treated as work branches even without a match here.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": ["*"]
+    },
+    "promotionPaths": {
+      "description": "Explicitly allowed environment promotions, written as \"source->target\", for example \"dev->test\".",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[^\\s\"]+->[^\\s\"]+$"
+      },
+      "default": []
+    },
+    "enforcement": {
+      "description": "How the command hook reacts to a forbidden flow: deny blocks it, ask defers to the user, warn allows it with a warning.",
+      "type": "string",
+      "enum": ["deny", "ask", "warn"],
+      "default": "deny"
+    }
+  }
+}

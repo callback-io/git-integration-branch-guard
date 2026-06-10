@@ -4,18 +4,66 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  audit-branch-flow.sh --production <base-ref> --integration <branch-name-or-ref> [--integration <branch-name-or-ref> ...] [--head <ref>]
+  audit-branch-flow.sh [--production <base-ref>] [--integration <branch-name-or-ref> ...] [--head <ref>]
 
 Examples:
   audit-branch-flow.sh --production origin/main --integration dev
   audit-branch-flow.sh --production origin/main --integration dev --integration test --integration uat
   audit-branch-flow.sh --production origin/main --integration origin/dev --integration origin/staging --head feature/example
+  audit-branch-flow.sh    # roles read from .branch-guard.json at the repository root
+
+Configuration:
+  When the repository root contains .branch-guard.json, its "production" and
+  "integration" arrays are used as defaults. Command-line options always
+  override the configuration file. Without a configuration file, --production
+  and at least one --integration are required.
 
 Purpose:
   Audit the commits between the production base and a work branch for signs
   that shared validation branches were merged, pulled, rebased, or cherry-picked
   into the work branch before release.
 USAGE
+}
+
+# Minimal extraction helpers for the flat .branch-guard.json schema. They
+# handle one-level string arrays and string scalars; branch names that contain
+# double quotes or backslashes are out of scope and documented as such.
+json_array_values() {
+  local key="$1"
+  local file="$2"
+
+  # The final awk stage also guarantees newline-terminated output; BSD sed
+  # would otherwise drop the trailing newline and `while read` would skip the
+  # last value.
+  tr '\n' ' ' < "$file" |
+    sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p' |
+    tr ',' '\n' |
+    awk -F'"' 'NF >= 3 { print $2 }'
+}
+
+json_scalar_value() {
+  local key="$1"
+  local file="$2"
+
+  tr '\n' ' ' < "$file" |
+    sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'
+}
+
+resolve_production_ref() {
+  local name="$1"
+  local short="${name#origin/}"
+
+  if git rev-parse --verify "origin/$short" >/dev/null 2>&1; then
+    printf 'origin/%s' "$short"
+    return 0
+  fi
+
+  if git rev-parse --verify "$name" >/dev/null 2>&1; then
+    printf '%s' "$name"
+    return 0
+  fi
+
+  return 1
 }
 
 require_option_value() {
@@ -141,14 +189,41 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -z "$production" ] || [ "${#integrations[@]}" -eq 0 ]; then
-  echo "Missing required arguments." >&2
-  usage >&2
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Not inside a Git work tree." >&2
   exit 2
 fi
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  echo "Not inside a Git work tree." >&2
+config_file="$(git rev-parse --show-toplevel)/.branch-guard.json"
+config_used=0
+
+if [ -f "$config_file" ]; then
+  if [ -z "$production" ]; then
+    while IFS= read -r config_production; do
+      [ -n "$config_production" ] || continue
+      if production="$(resolve_production_ref "$config_production")"; then
+        config_used=1
+        break
+      fi
+      production=""
+    done < <(json_array_values production "$config_file")
+  fi
+
+  if [ "${#integrations[@]}" -eq 0 ]; then
+    while IFS= read -r config_integration; do
+      [ -n "$config_integration" ] || continue
+      integrations+=("$config_integration")
+      config_used=1
+    done < <(json_array_values integration "$config_file")
+  fi
+fi
+
+if [ -z "$production" ] || [ "${#integrations[@]}" -eq 0 ]; then
+  echo "Missing required arguments." >&2
+  if [ -f "$config_file" ]; then
+    echo "No usable branch roles found in $config_file." >&2
+  fi
+  usage >&2
   exit 2
 fi
 
@@ -165,6 +240,9 @@ fi
 range="$production..$head_ref"
 
 echo "Auditing range: $range"
+if [ "$config_used" -ne 0 ]; then
+  echo "Branch roles loaded from .branch-guard.json"
+fi
 echo "Shared validation branches:"
 for integration in "${integrations[@]}"; do
   integration_short="$(short_integration_name "$integration")"

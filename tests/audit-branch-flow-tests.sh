@@ -301,6 +301,116 @@ test_custom_merge_message_is_detected_by_graph() {
   pass "$name"
 }
 
+scenario_config_file_roles() {
+  local output_file="$1"
+
+  cat > .branch-guard.json <<'JSON'
+{
+  "production": ["main"],
+  "integration": ["dev"],
+  "enforcement": "deny"
+}
+JSON
+  git switch -c dev >/dev/null 2>&1
+  printf 'dev\n' > dev.txt
+  git add dev.txt
+  git commit -m 'feat: shared dev change' >/dev/null
+  git switch -c feature/from-config main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git merge --no-ff dev -m 'absorb validation pool' >/dev/null
+
+  run_script "$output_file" >"$output_file.status"
+}
+
+test_config_file_supplies_roles() {
+  local name="config file supplies branch roles without arguments"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_config_file_roles "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 1 || return
+  assert_contains "$name" "$output" "Branch roles loaded from .branch-guard.json" || return
+  assert_contains "$name" "$output" "Result: possible shared-validation branch contamination detected." || return
+  pass "$name"
+}
+
+scenario_args_override_config() {
+  local output_file="$1"
+  local main_ref
+
+  cat > .branch-guard.json <<'JSON'
+{
+  "production": ["main"],
+  "integration": ["staging"]
+}
+JSON
+  main_ref="$(git rev-parse main)"
+  git switch -c dev >/dev/null 2>&1
+  printf 'dev\n' > dev.txt
+  git add dev.txt
+  git commit -m 'feat: shared dev change' >/dev/null
+  git switch -c feature/override main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git merge --no-ff dev -m "Merge branch 'dev' into feature/override" >/dev/null
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_arguments_override_config_file() {
+  local name="command-line options override the config file"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_args_override_config "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 1 || return
+  assert_contains "$name" "$output" "  - dev" || return
+  assert_contains "$name" "$output" "Result: possible shared-validation branch contamination detected." || return
+  pass "$name"
+}
+
+scenario_config_without_roles() {
+  local output_file="$1"
+
+  cat > .branch-guard.json <<'JSON'
+{
+  "enforcement": "warn"
+}
+JSON
+
+  run_script "$output_file" >"$output_file.status"
+}
+
+test_config_without_roles_still_requires_arguments() {
+  local name="config file without branch roles exits 2"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_config_without_roles "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 2 || return
+  assert_contains "$name" "$output" "Missing required arguments." || return
+  assert_contains "$name" "$output" "No usable branch roles found in" || return
+  pass "$name"
+}
+
 run_test() {
   local test_name="$1"
 
@@ -322,6 +432,9 @@ run_test test_substring_inside_word_is_not_flagged
 run_test test_missing_integration_ref_is_reported
 run_test test_log_decorations_do_not_trigger_matches
 run_test test_custom_merge_message_is_detected_by_graph
+run_test test_config_file_supplies_roles
+run_test test_arguments_override_config_file
+run_test test_config_without_roles_still_requires_arguments
 
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
 
