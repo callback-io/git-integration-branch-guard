@@ -1,0 +1,70 @@
+name: Git Integration Branch Guard
+description: >-
+  Audit a pull request or branch for contamination from shared validation
+  branches (dev/test/uat/staging) before it reaches production.
+branding:
+  icon: git-branch
+  color: orange
+
+inputs:
+  production:
+    description: >-
+      Production base ref to audit against, for example origin/main. When
+      empty, the audit reads .branch-guard.json at the repository root.
+    required: false
+    default: ""
+  integration:
+    description: >-
+      Comma-separated shared validation branches, for example "dev,staging".
+      When empty, the audit reads .branch-guard.json at the repository root.
+    required: false
+    default: ""
+  head:
+    description: Ref to audit. Defaults to the checked-out HEAD.
+    required: false
+    default: ""
+  strict:
+    description: Fail the check when only advisory patch-id matches are found.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Audit branch flow
+      shell: bash
+      env:
+        INPUT_PRODUCTION: ${{ inputs.production }}
+        INPUT_INTEGRATION: ${{ inputs.integration }}
+        INPUT_HEAD: ${{ inputs.head }}
+        INPUT_STRICT: ${{ inputs.strict }}
+      run: |
+        if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+          echo "::error::This action must run after actions/checkout."
+          exit 2
+        fi
+        if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+          echo "::error::The audit needs full history. Use actions/checkout with fetch-depth: 0."
+          exit 2
+        fi
+
+        args=()
+        if [ -n "$INPUT_PRODUCTION" ]; then
+          args+=(--production "$INPUT_PRODUCTION")
+        fi
+        if [ -n "$INPUT_INTEGRATION" ]; then
+          IFS=',' read -r -a integration_branches <<<"$INPUT_INTEGRATION"
+          for branch in "${integration_branches[@]}"; do
+            branch="$(printf '%s' "$branch" | tr -d '[:space:]')"
+            [ -n "$branch" ] || continue
+            args+=(--integration "$branch")
+          done
+        fi
+        if [ -n "$INPUT_HEAD" ]; then
+          args+=(--head "$INPUT_HEAD")
+        fi
+        if [ "$INPUT_STRICT" = "true" ]; then
+          args+=(--strict)
+        fi
+
+        bash "${GITHUB_ACTION_PATH}/skills/git-integration-branch-guard/scripts/audit-branch-flow.sh" "${args[@]}"

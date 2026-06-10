@@ -6,8 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- Read branch roles from `.branch-guard.json` at the repository root, shared by the skill, the command guard hook, and the audit script, with a published JSON Schema.
+- Package the project as a Claude Code plugin with a marketplace manifest, installable via `/plugin marketplace add callback-io/git-integration-branch-guard`.
+- Add a PreToolUse command guard hook that blocks merge/rebase/pull/reset flows from shared validation branches, branches created from validation branches, push refspecs onto production, and undeclared environment promotions, and asks before cherry-picks of validation-only commits, honoring the configured `deny`/`ask`/`warn` enforcement level.
+- Flag commits whose stable patch-id also exists on a shared validation branch under a different hash, catching cherry-picked or rebased copies with rewritten messages; advisory by default, failing with `--strict`, skippable with `--no-check-patch-id`.
+- Add a composite GitHub Action (`action.yml`) that runs the audit on pull requests.
+- Add `install.sh`, which copies the skill into detected agent runtimes (`~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`) without ever touching agent settings or hooks.
+
 ### Changed
 
+- Move the skill into the standard `skills/git-integration-branch-guard/` layout expected by plugin packaging; the audit script now lives at `skills/git-integration-branch-guard/scripts/audit-branch-flow.sh`.
 - Match shared validation branch names as whole words, so a name like `dev` no longer matches words like `developer`.
 
 ### Fixed

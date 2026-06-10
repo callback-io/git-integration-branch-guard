@@ -30,23 +30,35 @@ Git Integration Branch Guard 是一个通用的 Agent Skill，适用于使用共
 
 ```text
 git-integration-branch-guard/
+├── .claude-plugin/
+│   ├── plugin.json            # Claude Code plugin 元数据
+│   └── marketplace.json       # /plugin marketplace add 用的 marketplace 清单
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
-├── .editorconfig
-├── .gitattributes
-├── .gitignore
+├── action.yml                 # 包装审计脚本的 GitHub Action
+├── hooks/
+│   └── hooks.json             # PreToolUse hook 注册（仅 plugin 安装路径）
+├── install.sh                 # 把 skill 复制进检测到的 agent 运行时
+├── schema/
+│   └── branch-guard.schema.json
+├── scripts/
+│   └── guard-git-command.sh   # PreToolUse 命令守卫
+├── skills/
+│   └── git-integration-branch-guard/
+│       ├── SKILL.md
+│       └── scripts/
+│           └── audit-branch-flow.sh
+├── tests/
+│   ├── audit-branch-flow-tests.sh
+│   ├── guard-git-command-tests.sh
+│   └── install-tests.sh
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
-├── SKILL.md
 ├── README.md
 ├── README.zh-CN.md
-├── LICENSE
-├── scripts/
-│   └── audit-branch-flow.sh
-└── tests/
-    └── audit-branch-flow-tests.sh
+└── LICENSE
 ```
 
 ## Skill 格式
@@ -61,21 +73,69 @@ skill-name/
 └── assets/           # 可选：静态模板或资源
 ```
 
-只有 `SKILL.md` 是必需的。这个 skill 额外包含一个 shell 脚本，因为发布前分支审计是一组重复的 Git 检查，用确定性脚本承载更可靠。
+只有 `SKILL.md` 是必需的。这个 skill 额外包含一个 shell 脚本，因为发布前分支审计是一组重复的 Git 检查，用确定性脚本承载更可靠。skill 本体位于 `skills/git-integration-branch-guard/`，手动安装时复制这个目录即可。
 
 ## 安装方式
 
-作为 Agent Skill 使用：
+按你的工具链选择安装路径。以下每种方式安装的都是同一个 skill；只有 Claude Code plugin 路径会额外注册命令守卫 hook。
 
-1. 将这个目录复制或克隆到你的 agent 运行时的 skills 目录。
+### 作为 Claude Code plugin（skill + 命令守卫 hook）
+
+```text
+/plugin marketplace add callback-io/git-integration-branch-guard
+/plugin install git-integration-branch-guard@git-integration-branch-guard
+```
+
+这是唯一会启用 PreToolUse 命令守卫的安装路径，因为 plugin 安装流程自带 hook 注册的用户确认环节。兼容 Claude Code marketplace 的运行时（例如 Qwen Code）可以安装同一个包。
+
+### 使用安装脚本（任何 Agent Skills 运行时）
+
+```bash
+git clone https://github.com/callback-io/git-integration-branch-guard
+cd git-integration-branch-guard
+./install.sh --list   # 先预览检测到的运行时
+./install.sh          # 把 skill 复制进每个检测到的运行时
+```
+
+安装脚本会检测 `~/.claude`、`~/.codex`（遵循 `$CODEX_HOME`）、`~/.gemini` 和 `~/.qwen`，把 skill 复制进各运行时的 `skills` 目录。其他运行时用 `--target <目录>` 指定；`--project` 装进当前仓库的 `.claude/skills`；`--update` 刷新旧版本。安装脚本只复制 skill 文件，绝不修改 agent 设置或注册 hook。
+
+### 让 AI agent 自助安装
+
+想让你的编程 agent 替你安装时，把仓库地址给它并让它执行：
+
+```bash
+git clone https://github.com/callback-io/git-integration-branch-guard /tmp/git-integration-branch-guard
+/tmp/git-integration-branch-guard/install.sh --list
+/tmp/git-integration-branch-guard/install.sh
+```
+
+运行前先审阅安装脚本。它被刻意限制为只向 skills 目录复制文件，授权执行的风险很低；不要用管道直接从网络执行脚本。
+
+### 手动安装
+
+1. 将 `skills/git-integration-branch-guard/` 复制到你的 agent 运行时的 skills 目录。
 2. 保持 `SKILL.md` 和 `scripts/audit-branch-flow.sh` 在同一个 skill 目录下，方便 skill 引用辅助脚本。
 3. 按照你的 agent 运行时说明启用或加载这个 skill。
 
-只作为审计脚本使用：
+### 只作为审计脚本使用
 
-1. 将 `scripts/audit-branch-flow.sh` 复制到目标仓库或团队共享工具目录。
+1. 将 `skills/git-integration-branch-guard/scripts/audit-branch-flow.sh` 复制到目标仓库或团队共享工具目录。
 2. 在需要审计的 Git 工作区内运行它。
 3. 如果脚本放在仓库外，请用绝对路径调用。
+
+### 平台支持
+
+skill 遵循 [Agent Skills](https://agentskills.io) 开放标准，任何兼容运行时都可以加载,包括与 CLI 共享 skills 目录的桌面端和 web 端：
+
+| 运行时 | Skill | 命令守卫 hook | 安装方式 |
+|---|---|---|---|
+| Claude Code（CLI、桌面、web） | 支持 | 支持 | plugin 或安装脚本 |
+| Qwen Code | 支持 | 通过 Claude Code marketplace 兼容获得 | plugin 或安装脚本 |
+| OpenAI Codex（CLI、桌面 app） | 支持 | 不支持 | 安装脚本（`~/.codex/skills`） |
+| Gemini CLI | 支持 | 不支持 | 安装脚本（`~/.gemini/skills`） |
+| Cursor、GitHub Copilot、OpenCode 等 | 支持 | 不支持 | 手动复制进运行时 skills 目录 |
+
+不支持 hook 的运行时仍有两层防护：skill 在行动前引导 agent，审计脚本（或 GitHub Action）在发布前验证历史。
 
 ## 工作流概览
 
@@ -110,6 +170,39 @@ Skill 里的分支名只是常见示例：
 
 使用前先把这些角色映射到自己的仓库。
 
+## 仓库级配置
+
+在仓库根目录用 `.branch-guard.json` 声明一次分支角色，skill、命令守卫 hook 和审计脚本会读取同一份策略：
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/callback-io/git-integration-branch-guard/main/schema/branch-guard.schema.json",
+  "production": ["main"],
+  "integration": ["dev", "staging"],
+  "workPatterns": ["feat/*", "fix/*"],
+  "promotionPaths": ["dev->staging"],
+  "enforcement": "deny"
+}
+```
+
+- `production` 和 `integration` 接受分支名或 glob pattern；不属于这两类的都按工作分支处理。
+- `promotionPaths` 列出唯一允许的共享环境晋级路径，写法为 `source->target`。
+- `enforcement` 控制命令守卫 hook 的反应：`deny` 直接拦截，`ask` 交给用户确认，`warn` 放行但给出警告。
+
+没有这个文件时，守卫回退到常见分支名（`main`/`master` 等视为生产，`dev`/`test`/`staging` 等视为验证池）。文件要保持扁平——只用字符串数组和字符串标量——纯 shell 的消费方才能解析。仓库定制的 agent skill 往往可以退化成这一个配置文件加通用 skill。
+
+## 命令守卫 Hook（Claude Code plugin）
+
+以 Claude Code plugin 安装后，`scripts/guard-git-command.sh` 会作为 PreToolUse hook 在每次 Bash 工具调用时运行，在执行前拦截违反单向策略的 git 流向：
+
+- 把共享验证分支带进工作分支或生产分支的 `merge`、`rebase`、`pull`、`reset --hard`
+- 从共享验证分支创建新分支（`switch -c`、`checkout -b`、`branch`）
+- 把验证分支推上生产的 refspec（`push origin dev:main`）
+- 未在 `promotionPaths` 声明的共享环境晋级
+- cherry-pick 只能从验证分支到达的提交（以 `ask` 应答,因为复制提交的来源存在歧义）
+
+hook 按 fail-open 设计：payload 无法解析、找不到 JSON 解析器、目录不是 Git 工作区时,它保持沉默,绝不阻塞正常工作。临时绕过可设置 `BRANCH_GUARD_DISABLE=1`。skill 是第一层（行动前引导），审计脚本是最后一层（发布前验证），hook 是中间的强制层。
+
 ## 使用审计脚本
 
 脚本需要 Bash 环境。Windows 上请在 Git Bash（随 Git for Windows 一起安装）或 WSL 里运行。
@@ -117,39 +210,73 @@ Skill 里的分支名只是常见示例：
 在 Git 工作区内执行：
 
 ```bash
-scripts/audit-branch-flow.sh --production origin/main --integration dev
+skills/git-integration-branch-guard/scripts/audit-branch-flow.sh --production origin/main --integration dev
+```
+
+仓库里有 `.branch-guard.json` 时不需要参数：
+
+```bash
+skills/git-integration-branch-guard/scripts/audit-branch-flow.sh
 ```
 
 审计另一个分支：
 
 ```bash
-scripts/audit-branch-flow.sh --production origin/main --integration origin/dev --integration origin/test --integration origin/uat --head feature/example
+skills/git-integration-branch-guard/scripts/audit-branch-flow.sh --production origin/main --integration origin/dev --integration origin/test --integration origin/uat --head feature/example
 ```
 
 脚本退出码：
 
 - `0`：没有发现明显的共享验证分支污染
-- `1`：发现疑似污染
+- `1`：发现疑似污染；带 `--strict` 时，仅有 patch-id 提示性匹配也按此退出
 - `2`：参数或运行环境错误
 
 如果仓库有多个共享验证分支，可以重复传入 `--integration`。
 
-脚本会检查三类信号：
+脚本会检查四类信号：
 
 - merge commit 或 commit subject 是否按字面量整词提到共享验证分支名（`dev` 不会再误匹配 `developer` 这类词）
 - 当共享验证分支 ref 在本地存在时，merge commit 的非第一父提交是否可从该共享验证分支到达
+- 提交的 stable patch-id 是否以不同 hash 同时存在于共享验证分支上——这能查出改写过 message 的 cherry-pick 或 rebase 副本（提示性输出，可用 `--no-check-patch-id` 关闭）
 - 发布范围内的所有非 merge commit，供人工复核
 
-这个脚本有意保持保守。它是发布前辅助检查，不是“分支一定干净”的证明。rebase、cherry-pick、复制 patch、已删除 ref、重写历史和自定义仓库流程仍可能需要人工 review。
+这个脚本有意保持保守。它是发布前辅助检查，不是“分支一定干净”的证明。复制 patch、已删除 ref、重写历史和自定义仓库流程仍可能需要人工 review。
+
+## GitHub Action
+
+在每个指向生产分支的 pull request 上跑同样的审计：
+
+```yaml
+name: branch-guard
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: callback-io/git-integration-branch-guard@main
+        with:
+          production: origin/main
+          integration: dev,staging
+```
+
+审计需要完整历史，所以 `fetch-depth: 0` 是必需的。仓库里有 `.branch-guard.json` 时 `production` 和 `integration` 可以省略；`strict: "true"` 会让提示性 patch-id 匹配也判失败。这把守卫从 agent 扩展到了每一个人类贡献者。
 
 ## 开发检查
 
 发布改动前建议运行：
 
 ```bash
-bash -n scripts/audit-branch-flow.sh tests/audit-branch-flow-tests.sh
+bash -n skills/git-integration-branch-guard/scripts/audit-branch-flow.sh scripts/guard-git-command.sh install.sh tests/*.sh
 bash tests/audit-branch-flow-tests.sh
-shellcheck scripts/audit-branch-flow.sh tests/audit-branch-flow-tests.sh
+bash tests/guard-git-command-tests.sh
+bash tests/install-tests.sh
+shellcheck skills/git-integration-branch-guard/scripts/audit-branch-flow.sh scripts/guard-git-command.sh install.sh tests/*.sh
 ```
 
 GitHub Actions 会在 push 和 pull request 时运行同样的检查：ShellCheck 在 Linux 上运行，语法检查和测试在 Linux、macOS 和 Windows（Git Bash）上分别运行，持续保证 Bash 3.2 基线和 Windows 兼容性。
