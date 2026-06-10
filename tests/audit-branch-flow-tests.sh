@@ -411,6 +411,124 @@ test_config_without_roles_still_requires_arguments() {
   pass "$name"
 }
 
+scenario_cherry_pick_reworded() {
+  local output_file="$1"
+  local main_ref
+  local extra_arg="${2-}"
+
+  main_ref="$(git rev-parse main)"
+  git switch -c dev >/dev/null 2>&1
+  printf 'dev\n' > dev.txt
+  git add dev.txt
+  git commit -m 'feat: shared dev change' >/dev/null
+  git switch -c feature/picked main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git cherry-pick dev >/dev/null 2>&1
+  git commit --amend -m 'feat: innocent looking change' >/dev/null
+
+  if [ -n "$extra_arg" ]; then
+    run_script "$output_file" --production "$main_ref" --integration dev "$extra_arg" >"$output_file.status"
+  else
+    run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+  fi
+}
+
+test_reworded_cherry_pick_is_reported_as_advisory() {
+  local name="reworded cherry-pick from dev is reported as advisory"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_cherry_pick_reworded "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "same patch as" || return
+  assert_contains "$name" "$output" "Result: advisory patch-id matches found" || return
+  pass "$name"
+}
+
+scenario_cherry_pick_reworded_strict() {
+  scenario_cherry_pick_reworded "$1" --strict
+}
+
+test_strict_mode_fails_on_advisory_matches() {
+  local name="--strict fails on advisory patch-id matches"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_cherry_pick_reworded_strict "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 1 || return
+  assert_contains "$name" "$output" "Result: advisory patch-id matches found" || return
+  pass "$name"
+}
+
+scenario_cherry_pick_reworded_disabled() {
+  scenario_cherry_pick_reworded "$1" --no-check-patch-id
+}
+
+test_patch_id_check_can_be_disabled() {
+  local name="--no-check-patch-id skips the patch-id section"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_cherry_pick_reworded_disabled "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  if grep -Fq "same patch as" <<<"$output"; then
+    fail "$name" "patch-id section should be skipped"
+    return
+  fi
+  assert_contains "$name" "$output" "Result: no obvious shared-validation branch contamination found." || return
+  pass "$name"
+}
+
+scenario_own_commit_in_validation_pool() {
+  local output_file="$1"
+  local main_ref
+
+  main_ref="$(git rev-parse main)"
+  git switch -c dev >/dev/null 2>&1
+  git switch -c feature/own main >/dev/null 2>&1
+  printf 'work\n' > work.txt
+  git add work.txt
+  git commit -m 'feat: scoped work' >/dev/null
+  git switch dev >/dev/null 2>&1
+  git merge --no-ff feature/own -m 'collect for validation' >/dev/null
+  git switch feature/own >/dev/null 2>&1
+
+  run_script "$output_file" --production "$main_ref" --integration dev >"$output_file.status"
+}
+
+test_own_commits_in_validation_pool_are_not_flagged() {
+  local name="own commits merged into dev are not flagged by patch-id"
+  local output_file
+  output_file="$(mktemp)"
+  with_git_repo scenario_own_commit_in_validation_pool "$output_file"
+
+  local status output
+  status="$(cat "$output_file.status")"
+  output="$(cat "$output_file")"
+  rm -f "$output_file" "$output_file.status"
+
+  assert_status "$name" "$status" 0 || return
+  assert_contains "$name" "$output" "Result: no obvious shared-validation branch contamination found." || return
+  pass "$name"
+}
+
 run_test() {
   local test_name="$1"
 
@@ -435,6 +553,10 @@ run_test test_custom_merge_message_is_detected_by_graph
 run_test test_config_file_supplies_roles
 run_test test_arguments_override_config_file
 run_test test_config_without_roles_still_requires_arguments
+run_test test_reworded_cherry_pick_is_reported_as_advisory
+run_test test_strict_mode_fails_on_advisory_matches
+run_test test_patch_id_check_can_be_disabled
+run_test test_own_commits_in_validation_pool_are_not_flagged
 
 printf '\n%d passed, %d failed\n' "$pass_count" "$fail_count"
 

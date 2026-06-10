@@ -4,13 +4,19 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  audit-branch-flow.sh [--production <base-ref>] [--integration <branch-name-or-ref> ...] [--head <ref>]
+  audit-branch-flow.sh [--production <base-ref>] [--integration <branch-name-or-ref> ...] [--head <ref>] [--strict] [--no-check-patch-id]
 
 Examples:
   audit-branch-flow.sh --production origin/main --integration dev
   audit-branch-flow.sh --production origin/main --integration dev --integration test --integration uat
   audit-branch-flow.sh --production origin/main --integration origin/dev --integration origin/staging --head feature/example
   audit-branch-flow.sh    # roles read from .branch-guard.json at the repository root
+
+Options:
+  --strict             Also fail (exit 1) when only advisory patch-id matches
+                       are found.
+  --no-check-patch-id  Skip the patch-id comparison against shared validation
+                       branches.
 
 Configuration:
   When the repository root contains .branch-guard.json, its "production" and
@@ -162,6 +168,8 @@ report_mention_section() {
 production=""
 integrations=()
 head_ref="HEAD"
+strict=0
+check_patch_id=1
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -176,6 +184,14 @@ while [ "$#" -gt 0 ]; do
     --head)
       head_ref="$(require_option_value "$1" "${2-}")"
       shift 2
+      ;;
+    --strict)
+      strict=1
+      shift
+      ;;
+    --no-check-patch-id)
+      check_patch_id=0
+      shift
       ;;
     -h|--help)
       usage
@@ -299,6 +315,53 @@ else
 fi
 echo
 
+patch_id_found=0
+if [ "$check_patch_id" -eq 1 ]; then
+  echo "Commits whose patches also exist on shared validation branches under a different hash:"
+  if [ "${#resolved_refs[@]}" -eq 0 ]; then
+    echo "  skipped: none of the shared validation branch refs were found locally"
+  else
+    # Join the patch-ids of validation-only commits against the release range.
+    # A match with a different hash usually means a cherry-picked or rebased
+    # copy whose commit message no longer names the validation branch.
+    patch_id_matches="$(
+      {
+        for integration_ref in "${resolved_refs[@]}"; do
+          git log --no-show-signature --no-merges -p "$production..$integration_ref" 2>/dev/null |
+            git patch-id --stable |
+            awk -v ref="$integration_ref" '{ print "I", $1, $2, ref }'
+        done
+        git log --no-show-signature --no-merges -p "$range" 2>/dev/null |
+          git patch-id --stable |
+          awk '{ print "H", $1, $2 }'
+      } | awk '
+        $1 == "I" && !($2 in integration_sha) { integration_sha[$2] = $3; integration_ref[$2] = $4; next }
+        $1 == "H" && ($2 in integration_sha) && integration_sha[$2] != $3 {
+          print $3, integration_sha[$2], integration_ref[$2]
+        }
+      '
+    )"
+    if [ -n "$patch_id_matches" ]; then
+      while IFS=' ' read -r head_commit twin_commit twin_ref; do
+        [ -n "$head_commit" ] || continue
+        echo "  $(git log -1 --no-decorate --no-show-signature --oneline "$head_commit")"
+        echo "    same patch as $(git rev-parse --short "$twin_commit") on $twin_ref"
+        patch_id_found=1
+      done <<EOF
+$patch_id_matches
+EOF
+      cat <<'NOTE'
+  note: patch-id matches are advisory. A rebased work branch that was
+  previously merged into a validation pool matches its own copied commits;
+  verify the origin of each commit before treating it as contamination.
+NOTE
+    else
+      echo "  none found"
+    fi
+  fi
+  echo
+fi
+
 report_mention_section "Commit subjects that mention shared validation branches:" no
 
 echo "Commits in release range:"
@@ -315,6 +378,16 @@ clean branch from production unless every included commit is intentionally in
 scope for this release.
 WARNING
   exit 1
+fi
+
+if [ "$patch_id_found" -ne 0 ]; then
+  cat <<'WARNING'
+Result: advisory patch-id matches found; verify the origin of those commits.
+WARNING
+  if [ "$strict" -eq 1 ]; then
+    exit 1
+  fi
+  exit 0
 fi
 
 echo "Result: no obvious shared-validation branch contamination found."
